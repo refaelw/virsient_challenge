@@ -3,6 +3,8 @@
 cmake_minimum_required(VERSION 3.5 FATAL_ERROR)
 
 project(virsient_challenge LANGUAGES C CXX) 
+set (CMAKE_CXX_STANDARD 11)
+
 include(${CMAKE_BINARY_DIR}/conan_paths.cmake)
 
 if(MSVC)
@@ -13,8 +15,15 @@ endif()
 
 include_directories("src/")
 
-set(virsient_client_srcs src/client.c)
+set(virsient_lib_srcs 
+src/client.c 
+src/linked_list.c
+src/file_io.c)
+add_library(virsient_lib STATIC ${virsient_lib_srcs}) 
+
+set(virsient_client_srcs src/client_main.c)
 add_executable(virsient_client ${virsient_client_srcs})
+target_link_libraries(virsient_client virsient_lib) 
 
 # The server srcs 
 set(COMPILE_TESTS ON) 

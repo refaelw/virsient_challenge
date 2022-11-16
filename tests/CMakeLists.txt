@@ -4,7 +4,7 @@ find_package(Catch2 3 REQUIRED)
 # Add the test files here. 
 set(test_srcs client_test.cpp) 
 add_executable(client_tests ${test_srcs}) 
-target_link_libraries(client_tests PRIVATE Catch2::Catch2WithMain)
+target_link_libraries(client_tests PRIVATE Catch2::Catch2WithMain virsient_lib)
 
 include(CTest)
 include(Catch)
