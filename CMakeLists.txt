@@ -26,6 +26,10 @@ set(virsient_client_srcs src/client_main.c)
 add_executable(virsient_client ${virsient_client_srcs})
 target_link_libraries(virsient_client virsient_lib) 
 
+set(virsient_server_srcs src/server_main.c)
+add_executable(virsient_server ${virsient_server_srcs})
+target_link_libraries(virsient_server virsient_lib) 
+
 # The server srcs 
 set(COMPILE_TESTS ON) 
 # The unit tests

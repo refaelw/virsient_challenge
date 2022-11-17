@@ -125,8 +125,22 @@ TEST_CASE("TransmitFiles")
         client_threads.at(n).join();
     }
 
+    std::cout << "Joining server thread" << std::endl;
     run_server = false;
     server_thread.join();
+    std::cout << "Here" << std::endl;
+
+    // XXX : Now to check
+    int ret_val;
+    uint8_t *buf;
+
+    for (size_t n = 0; n < client_threads.size(); n++)
+    {
+        std::string filename = "file_number_" + std::to_string(n) + ".bin";
+        ret_val = buffer_file(filename.c_str(), &buf);
+        REQUIRE(ret_val == (n + 1) * 100);
+        free(buf);
+    }
 
     return;
 }

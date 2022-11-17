@@ -139,9 +139,10 @@ int server_loop(SOCKET *listen_socket, bool *keep_looping)
             struct thread_elem *elem = add_thread(&active_threads);
 
             // This is blocking so will wait until forever.
-            // Oh fuck, this blocks, so will never exit ...
+            // Oh fuck, this blocks, so will never exit.
+            // But this function call is non-blocking on send and other socket function calls.
+            // ioctlsocket(sock, FIONBIO, 1);
 
-            // We either move this into the thread, and kill it by calling closesocket()
             elem->client_socket = accept(*listen_socket, NULL, NULL);
             if (elem->client_socket == INVALID_SOCKET)
             {
