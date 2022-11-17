@@ -17,6 +17,7 @@ include_directories("src/")
 
 set(virsient_lib_srcs 
 src/client.c 
+src/server.c
 src/linked_list.c
 src/file_io.c)
 add_library(virsient_lib STATIC ${virsient_lib_srcs}) 

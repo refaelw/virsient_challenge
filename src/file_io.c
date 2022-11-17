@@ -90,3 +90,9 @@ int buffer_file(const char *filename, uint8_t **buf)
     // Things went well.
     return read_bytes;
 }
+
+uint32_t compute_checksum(uint8_t *buffer, size_t buf_size)
+{
+    // XXX : Currently not implemented.
+    return 0;
+}

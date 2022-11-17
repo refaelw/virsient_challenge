@@ -3,16 +3,25 @@
 #include <array>
 #include <random>
 #include <iostream>
+#include <mutex>
+#include <thread>
+#include <atomic>
+#include <chrono>
 
 #ifdef _WIN32
+#include <winsock2.h>
 #include <windows.h>
+#include <ws2tcpip.h>
 #endif
 
 // Test the possible functions.
 #include <catch2/catch_test_macros.hpp>
 
+#include "server.h"
 #include "client.h"
+#include "crossplatform.h"
 #include "linked_list.h"
+#include "file_io.h"
 
 DWORD WINAPI thread_sleep(LPVOID lpParam)
 {
@@ -20,6 +29,84 @@ DWORD WINAPI thread_sleep(LPVOID lpParam)
     sleep_time = (uint32_t *)lpParam;
     Sleep(*sleep_time);
     return 0;
+}
+
+void start_server_thread(std::atomic<bool> &run_server, uint16_t port)
+{
+    // We start the server
+    int ret_val;
+    std::array<char, 10> rx_bytes;
+
+    SOCKET listen_socket, client_socket;
+
+    ret_val = start_server(port, &listen_socket);
+    REQUIRE(ret_val == 0);
+    // This is a blocking function
+    client_socket = accept(listen_socket, NULL, NULL);
+    REQUIRE(client_socket != INVALID_SOCKET);
+    // We only need to listen once.
+    closesocket(listen_socket);
+    ret_val = recv(client_socket, rx_bytes.data(), rx_bytes.size(), 0);
+    if (ret_val < 0)
+    {
+        printf("recv failed with error: %d\n", WSAGetLastError());
+    }
+    CHECK(ret_val == rx_bytes.size());
+    for (size_t n = 0; n < rx_bytes.size(); n++)
+    {
+        CHECK(rx_bytes[n] == n);
+    }
+
+    // This need to happen on the client socket.
+    ret_val = shutdown(client_socket, SD_SEND);
+    closesocket(client_socket);
+
+    WSACleanup();
+    return;
+}
+
+TEST_CASE("StartServer")
+{
+    int ret_val;
+    uint16_t port = 27015;
+    SOCKET listen_socket;
+
+    ret_val = start_server(port, &listen_socket);
+    CHECK(ret_val == 0);
+    stop_server(&listen_socket);
+    return;
+}
+
+TEST_CASE("ClientServer")
+{
+    using namespace std::chrono_literals;
+    int ret_val;
+    uint16_t port = 27015;
+    SOCKET connected_socket;
+
+    // We test that we can start and stop the client and
+    // servers.
+    std::atomic<bool> run_server;
+    std::string hostname = "192.168.1.77";
+    run_server.store(true);
+    std::thread server_thread = std::thread(start_server_thread, std::ref(run_server), port);
+
+    // Make sure the sever is actually up and running
+    std::this_thread::sleep_for(1ms);
+
+    // Start the client.
+    ret_val = start_client(hostname.c_str(), port, &connected_socket);
+    REQUIRE(ret_val == 0);
+    // Send some data.
+    std::array<char, 10> bytes{0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
+    ret_val = send(connected_socket, bytes.data(), bytes.size(), 0);
+    CHECK(ret_val == 10);
+
+    stop_client(&connected_socket);
+
+    run_server.store(false);
+    server_thread.join();
+    // Start the client.
 }
 
 TEST_CASE("StartThreads")

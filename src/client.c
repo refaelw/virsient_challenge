@@ -18,27 +18,82 @@
 #endif
 
 #include "client.h"
-
-struct packet1
-{
-    uint32_t magic_number;
-    uint32_t file_size;
-    uint32_t filename_size;
-    uint32_t checksum;
-};
+#include "crossplatform.h"
 
 // Lets start the client
-int transmit_file()
+int transmit_file(SOCKET *connected_socket, const char *filename)
 {
     // Send the first part of the message.
+    uint8_t *buffer;
+    int buffer_size;
+    int ret_val;
+    uint32_t rx_codes;
+
+    buffer_size = buffer_file(filename, &buffer);
+    if (buffer_size < 1)
+    {
+        // Error out
+    }
+
+    struct packet1 pkt1;
+
+    // Getting ready to transmit
+    pkt1.file_size = buffer_size;
+    pkt1.checksum = compute_checksum(buffer, pkt1.file_size);
+    pkt1.filename_size = strlen(filename);
+    pkt1.magic_number = MAGIC_NUMBER;
+
+    // Send the packet information
+    ret_val = send(*connected_socket, &pkt1, sizeof(pkt1), 0);
+    if (ret_val == SOCKET_ERROR)
+    {
+        // Error out
+    }
 
     // Get response
+    ret_val = recv(*connected_socket, &rx_codes, sizeof(rx_codes), 0);
+    if (ret_val != sizeof(rx_codes))
+    {
+        // Error out
+    }
 
-    // Send filename (because variable length)
+    if (rx_codes == TX_FILENAME)
+    {
+        // Send filename (because variable length)
+        ret_val = send(*connected_socket, filename, pkt1.filename_size, 0);
+        if (ret_val == SOCKET_ERROR)
+        {
+            // Error out
+        }
 
-    // Get the okay message back
+        // Get the okay message back
+        ret_val = recv(*connected_socket, &rx_codes, sizeof(rx_codes), 0);
+        if (ret_val != sizeof(rx_codes))
+        {
+            // Error out
+        }
 
-    // Send the entire buffer.
+        // Check the rx code to make sure we should transmit the buffer
+        if (rx_codes == TX_BUFFER)
+        {
+            // Send the entire buffer.
+            ret_val = send(*connected_socket, buffer, pkt1.file_size, 0);
+            if (ret_val == SOCKET_ERROR)
+            {
+                // Error out
+            }
+        }
+    }
+
+    // close down the socket
+    stop_client(connected_socket);
+    return 0;
+}
+
+void stop_client(SOCKET *connected_socket)
+{
+    closesocket(*connected_socket);
+    WSACleanup();
 }
 
 int start_client(const char *hostname, uint16_t port, SOCKET *connected_socket)
@@ -46,7 +101,13 @@ int start_client(const char *hostname, uint16_t port, SOCKET *connected_socket)
     int ret_val;
     struct addrinfo hints, *result, *ptr;
     WSADATA wsa_data;
+    // 65500
+    char port_str[7];
+    sprintf(port_str, "%d", port);
+
     *connected_socket = INVALID_SOCKET;
+    result = NULL;
+    ptr = NULL;
 
     int32_t max_retries = 25;
     int32_t retry_count = 0;
@@ -57,13 +118,14 @@ int start_client(const char *hostname, uint16_t port, SOCKET *connected_socket)
         perror("start_client() - WSAStartup() failed!");
         return -1;
     }
+
     memset(&hints, 0, sizeof(hints));
 
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_protocol = IPPROTO_TCP;
 
-    ret_val = getaddrinfo(hostname, port, &hints, &result);
+    ret_val = getaddrinfo(hostname, port_str, &hints, &result);
     if (ret_val != 0)
     {
         perror("start_client() - getaddrinfo failed!");
@@ -81,6 +143,7 @@ int start_client(const char *hostname, uint16_t port, SOCKET *connected_socket)
             WSACleanup();
             return -1;
         }
+        printf("3\n");
 
         ret_val = connect(*connected_socket, ptr->ai_addr, (int)ptr->ai_addrlen);
         if (ret_val == SOCKET_ERROR)
@@ -96,6 +159,7 @@ int start_client(const char *hostname, uint16_t port, SOCKET *connected_socket)
         }
         break;
     }
+
     freeaddrinfo(result);
     if (*connected_socket == INVALID_SOCKET)
     {
@@ -106,196 +170,3 @@ int start_client(const char *hostname, uint16_t port, SOCKET *connected_socket)
     // We have a valid socket.
     return 0;
 }
-
-/*
-int rx_header()
-{
-    // We wait on the connection until
-
-    // Accept a client socket
-    ClientSocket = accept(ListenSocket, NULL, NULL);
-    if (ClientSocket == INVALID_SOCKET)
-    {
-        printf("accept failed with error: %d\n", WSAGetLastError());
-        closesocket(ListenSocket);
-        WSACleanup();
-        return 1;
-    }
-
-    // We spin up a thread now.
-    // Receive until the peer shuts down the connection
-    do
-    {
-
-        iResult = recv(ClientSocket, recvbuf, recvbuflen, 0);
-        if (iResult > 0)
-        {
-            printf("Bytes received: %d\n", iResult);
-
-            // Echo the buffer back to the sender
-            iSendResult = send(ClientSocket, recvbuf, iResult, 0);
-            if (iSendResult == SOCKET_ERROR)
-            {
-                printf("send failed with error: %d\n", WSAGetLastError());
-                closesocket(ClientSocket);
-                WSACleanup();
-                return 1;
-            }
-            printf("Bytes sent: %d\n", iSendResult);
-        }
-        else if (iResult == 0)
-            printf("Connection closing...\n");
-        else
-        {
-            printf("recv failed with error: %d\n", WSAGetLastError());
-            closesocket(ClientSocket);
-            WSACleanup();
-            return 1;
-        }
-
-    } while (iResult > 0);
-
-    // shutdown the connection since we're done
-    iResult = shutdown(ClientSocket, SD_SEND);
-    if (iResult == SOCKET_ERROR)
-    {
-        printf("shutdown failed with error: %d\n", WSAGetLastError());
-        closesocket(ClientSocket);
-        WSACleanup();
-        return 1;
-    }
-}
-
-int stop_server()
-{
-    // No longer need server socket
-    closesocket(ListenSocket);
-    WSACleanup();
-    return 0;
-}
-* /
-
-    int start_server(uint16_t port)
-{
-    // FTP uses port 21,
-    // uint16_t port = 1778;
-    WSADATA wsa_data;
-    int ret_val, err_code;
-    SOCKET listen_socket;
-    struct addrinfo *result, hints;
-
-    int max_retrys = 50;
-    struct timeval time_out;
-    time_out.tv_sec = 10;
-    time_out.tv_usec = 0;
-
-    ret_val = WSAStartup(MAKEWORD(2, 2), &wsa_data);
-    if (ret_val != 0)
-    {
-        perror("start_server() - Failed WSAStartup");
-        return -1;
-    }
-
-    memset(&hints, 0, sizeof(hints));
-    // We are going to try IPv6 to start with.
-    hints.ai_addr = AF_INET6;
-    // We are going to say use TCP for reliable transfer.
-    hints.ai_socktype = SOCK_STREAM;
-    hints.ai_protocol = IPPROTO_TCP;
-    // Accept any connections.
-    hints.ai_flags = AI_PASSIVE;
-
-    ret_val = getaddrinfo(NULL, port, &hints, &result);
-    if (ret_val != 0)
-    {
-        if (ret_val == EAI_AGAIN)
-        {
-            // Temporay failure, sleep and try again.
-            Sleep(1000);
-            ret_val = getaddrinfo(NULL, port, &hints, &result);
-            if (ret_val != 0)
-            {
-                // Things are bad.
-                WSACleanup();
-                return -1;
-            }
-        }
-        else
-        {
-            // Things went bad.
-            WSACleanup();
-            return -1;
-        }
-    }
-    // Create the socket
-    listen_socket = socket(result->ai_family, result->ai_socktype, result->ai_protocol);
-    if (listen_socket == INVALID_SOCKET)
-    {
-        // Clean up.
-        err_code = WSAGetLastError();
-        freeaddrinfo(result);
-        WSACleanup();
-        return -1;
-    }
-    // Configure the socket
-    setsockopt(listen_socket, IPPROTO_TCP, TCP_MAXRT, &max_retrys, sizeof(max_retrys));
-    setsockopt(listen_socket, IPPROTO_TCP, SO_RCVTIMEO, &time_out, sizeof(time_out));
-    // bind
-    ret_val = bind(listen_socket, result->ai_addr, (int)result->ai_addrlen);
-    if (ret_val == SOCKET_ERROR)
-    {
-        // Something went wrong ...
-        err_code = WSAGetLastError();
-        // Cleanup
-        freeaddrinfo(result);
-        WSACleanup();
-        return -1;
-    }
-
-    freeaddrinfo(result);
-
-    // Now listen. Use SO MAX CONN to support as many connections as possible.
-    ret_val = listen(listen_socket, SOMAXCONN);
-    if (ret_val == SOCKET_ERROR)
-    {
-        // Something went wrong ...
-        err_code = WSAGetLastError();
-        // Cleanup
-        freeaddrinfo(result);
-        WSACleanup();
-        return -1;
-    }
-
-    // The accept() is blocking so should start in another thread.
-    return;
-
-    // This is where we have to be careful, as the client socket is what we communicate on.
-    // client_socket
-
-    // Setup the socket options due to the channel conditions
-    // We are going to increase the timeout because the channel is unreliable
-}
-
-/*
-int
-sha_compute(uint8_t buffer, size_t buffer_size)
-{
-    // Get the buffers checksum.
-}
-int npackets(size_t buffer_size, size_t pkt_size)
-{
-    // Calculate the number of packets to transmit.
-}
-
-int start_transfer()
-{
-    // So we send the file header information.
-
-    // If the
-}
-
-int transmit_buffer()
-{
-    // So run through the buffer and send the packets.
-}
-*/
