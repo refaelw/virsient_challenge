@@ -10,8 +10,9 @@ extern "C"
   // used by C++ source code
 #endif
 
-    EXTERN_DLL_EXPORT int start_server(uint16_t port, SOCKET *listen_socket);
-    EXTERN_DLL_EXPORT void stop_server(SOCKET *listen_socket);
+  EXTERN_DLL_EXPORT int start_server(uint16_t port, SOCKET *listen_socket);
+  EXTERN_DLL_EXPORT int server_loop(SOCKET *listen_socket, bool *keep_looping);
+  EXTERN_DLL_EXPORT void stop_server(SOCKET *socket);
 
 #ifdef __cplusplus
 }

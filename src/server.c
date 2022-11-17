@@ -39,10 +39,14 @@ DWORD WINAPI rx_thread(LPVOID lpParam)
     if (rx_bytes != sizeof(pkt1))
     {
         // Something failed ...
+        perror("rx_thread() - Failed to recv full packet size!");
+        return -1;
     }
     if (pkt1.magic_number != MAGIC_NUMBER)
     {
         // This message is not what we think it is
+        perror("rx_thread() - magic number not recived");
+        return -1;
     }
 
     filename = malloc(pkt1.filename_size);
@@ -52,13 +56,21 @@ DWORD WINAPI rx_thread(LPVOID lpParam)
     ret_val = send(elem->client_socket, &send_code, sizeof(send_code), 0);
     if (ret_val < 0)
     {
+        perror("rx_thread() - send failed!\n");
         // Error out
+        free(filename);
+        free(buffer);
+        return -1;
     }
     // RX the filename
     rx_bytes = recv(elem->client_socket, filename, pkt1.filename_size, 0);
-    if (rx_bytes != pkt1.file_size)
+    if (rx_bytes != pkt1.filename_size)
     {
         // Error out
+        perror("rx_thread() - recv filename failed!\n");
+        free(filename);
+        free(buffer);
+        return -1;
     }
 
     // Check the filesystem
@@ -67,11 +79,20 @@ DWORD WINAPI rx_thread(LPVOID lpParam)
     if (ret_val < 0)
     {
         // Error out
+        perror("rx_thread() - send tx buffer failed!\n");
+
+        free(filename);
+        free(buffer);
+        return -1;
     }
     // RX the buffer
     rx_bytes = recv(elem->client_socket, buffer, pkt1.file_size, 0);
     if (rx_bytes != pkt1.file_size)
     {
+        perror("rx_thread() - recv buffer failed!\n");
+        free(filename);
+        free(buffer);
+        return -1;
     }
     // close the connection
     ret_val = shutdown(elem->client_socket, SD_SEND);
@@ -82,6 +103,9 @@ DWORD WINAPI rx_thread(LPVOID lpParam)
     if (checksum != pkt1.checksum)
     {
         // Something went wrong ...
+        free(filename);
+        free(buffer);
+        return -1;
     }
 
     // write the file
@@ -89,27 +113,35 @@ DWORD WINAPI rx_thread(LPVOID lpParam)
     if (ret_val != 0)
     {
         // Failed to write
+        free(filename);
+        free(buffer);
+        return -1;
     }
     // free everything
     free(filename);
     free(buffer);
-
     return 0;
 }
 
-int server_loop(SOCKET *listen_socket)
+int server_loop(SOCKET *listen_socket, bool *keep_looping)
 {
     //
     struct thread_elem *active_threads;
+    // This is a constant so we dont get killed by too much memory
     int max_threads = 25;
 
-    // XXX : We want an exit condition so we can shut down the sever nicely
-    while (true)
+    // This way we can kill the sever from another
+    // XXX : I know its not atomic, but C doesn't have standard atomic types.
+    while (*keep_looping == true)
     {
         if (list_length(&active_threads) < max_threads)
         {
             struct thread_elem *elem = add_thread(&active_threads);
+
             // This is blocking so will wait until forever.
+            // Oh fuck, this blocks, so will never exit ...
+
+            // We either move this into the thread, and kill it by calling closesocket()
             elem->client_socket = accept(*listen_socket, NULL, NULL);
             if (elem->client_socket == INVALID_SOCKET)
             {
@@ -118,7 +150,7 @@ int server_loop(SOCKET *listen_socket)
                 // XXX
                 closesocket(*listen_socket);
                 WSACleanup();
-                return 1;
+                return -1;
             }
 
             // Start the threads
@@ -129,19 +161,23 @@ int server_loop(SOCKET *listen_socket)
                 elem,
                 0,
                 &elem->dwThreadIdArray);
-
-            // Cleanup any threads that are done.
-            check_threads(&active_threads);
         }
+        // Cleanup any threads that are done.
+        check_threads(&active_threads);
+    }
+    // Need to kill all threads if not done so already.
+    while (list_length(&active_threads) > 0)
+    {
+        check_threads(&active_threads);
     }
 
     stop_server(listen_socket);
     return 0;
 }
 
-void stop_server(SOCKET *listen_socket)
+void stop_server(SOCKET *socket)
 {
-    closesocket(*listen_socket);
+    closesocket(*socket);
     WSACleanup();
 }
 
@@ -197,7 +233,6 @@ int start_server(uint16_t port, SOCKET *listen_socket)
         else
         {
             // Things went bad.
-            printf("getaddrinfo failed with error: %d\n", ret_val);
             perror("start_server() - getaddrinfo failed, with a bad error code!");
             WSACleanup();
             return -1;
@@ -215,8 +250,8 @@ int start_server(uint16_t port, SOCKET *listen_socket)
         return -1;
     }
     // Configure the socket
-    // setsockopt(*listen_socket, IPPROTO_TCP, TCP_MAXRT, &max_retrys, sizeof(max_retrys));
-    // setsockopt(*listen_socket, IPPROTO_TCP, SO_RCVTIMEO, &time_out, sizeof(time_out));
+    setsockopt(*listen_socket, IPPROTO_TCP, TCP_MAXRT, &max_retrys, sizeof(max_retrys));
+    setsockopt(*listen_socket, IPPROTO_TCP, SO_RCVTIMEO, &time_out, sizeof(time_out));
 
     // bind
     ret_val = bind(*listen_socket, result->ai_addr, (int)result->ai_addrlen);

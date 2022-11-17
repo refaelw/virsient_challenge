@@ -31,7 +31,42 @@ DWORD WINAPI thread_sleep(LPVOID lpParam)
     return 0;
 }
 
-void start_server_thread(std::atomic<bool> &run_server, uint16_t port)
+void client_thread(std::string hostname, uint16_t port, std::string filename, size_t file_size)
+{
+    // Designed to be a thread so can boot multiple
+    // TX file transfers at once.
+    SOCKET connected_socket;
+    int ret_val;
+    std::vector<uint8_t> buf;
+    buf.resize(file_size);
+
+    struct packet1 pkt1;
+    pkt1.magic_number = MAGIC_NUMBER;
+    pkt1.file_size = file_size;
+    pkt1.filename_size = strlen(filename.c_str()) + 1;
+    pkt1.checksum = compute_checksum(buf.data(), buf.size());
+
+    ret_val = start_client(hostname.c_str(), port, &connected_socket);
+    REQUIRE(ret_val == 0);
+
+    ret_val = transmit_buffer(&connected_socket, &pkt1, buf.data(), filename.c_str());
+    CHECK(ret_val == 0);
+    std::cout << "Have transmitted file " << filename << std::endl;
+    return;
+}
+
+void start_server_loop(bool &run_loop, uint16_t port)
+{
+    //
+    SOCKET listen_socket;
+    int ret_val;
+    ret_val = start_server(port, &listen_socket);
+    REQUIRE(ret_val == 0);
+    ret_val = server_loop(&listen_socket, &run_loop);
+    return;
+}
+
+void start_server_thread(uint16_t port)
 {
     // We start the server
     int ret_val;
@@ -65,6 +100,37 @@ void start_server_thread(std::atomic<bool> &run_server, uint16_t port)
     return;
 }
 
+TEST_CASE("TransmitFiles")
+{
+    // Finally getting the unit tests together.
+    uint16_t port = 47181;
+    std::string hostname = "LocalHost";
+
+    bool run_server = true;
+    std::thread server_thread(start_server_loop, std::ref(run_server), port);
+
+    // We spin up the client threads
+    std::array<std::thread, 10> client_threads;
+    for (size_t n = 0; n < client_threads.size(); n++)
+    {
+        std::string filename = "file_number_" + std::to_string(n) + ".bin";
+        size_t filesize = (n + 1) * 200;
+
+        client_threads.at(n) = std::thread(client_thread, hostname, port, filename, filesize);
+    }
+
+    // Now wait for all the threads to joni back up.
+    for (size_t n = 0; n < client_threads.size(); n++)
+    {
+        client_threads.at(n).join();
+    }
+
+    run_server = false;
+    server_thread.join();
+
+    return;
+}
+
 TEST_CASE("StartServer")
 {
     int ret_val;
@@ -86,10 +152,8 @@ TEST_CASE("ClientServer")
 
     // We test that we can start and stop the client and
     // servers.
-    std::atomic<bool> run_server;
-    std::string hostname = "192.168.1.77";
-    run_server.store(true);
-    std::thread server_thread = std::thread(start_server_thread, std::ref(run_server), port);
+    std::string hostname = "LocalHost";
+    std::thread server_thread = std::thread(start_server_thread, port);
 
     // Make sure the sever is actually up and running
     std::this_thread::sleep_for(1ms);
@@ -104,7 +168,6 @@ TEST_CASE("ClientServer")
 
     stop_client(&connected_socket);
 
-    run_server.store(false);
     server_thread.join();
     // Start the client.
 }

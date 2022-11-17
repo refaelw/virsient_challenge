@@ -24,6 +24,7 @@ extern "C"
   };
 
   EXTERN_DLL_EXPORT int transmit_file(SOCKET *connected_socket, const char *filename);
+  EXTERN_DLL_EXPORT int transmit_buffer(SOCKET *connected_socket, struct packet1 *pkt1, uint8_t *buffer, const char *filename);
   EXTERN_DLL_EXPORT int start_client(const char *hostname, uint16_t port, SOCKET *connected_socket);
   EXTERN_DLL_EXPORT void stop_client(SOCKET *connected_socket);
 

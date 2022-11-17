@@ -20,6 +20,80 @@
 #include "client.h"
 #include "crossplatform.h"
 
+int transmit_buffer(SOCKET *connected_socket, struct packet1 *pkt1, uint8_t *buffer, const char *filename)
+{
+    // Because if client and server the same, want to test in the same part
+    // Send the packet information
+    uint32_t rx_codes;
+    int ret_val;
+
+    ret_val = send(*connected_socket, pkt1, sizeof(struct packet1), 0);
+    if (ret_val == SOCKET_ERROR)
+    {
+        // Error out
+        perror("transmit_buffer() - Failed to send pkt\n");
+        return -1;
+    }
+
+    // Get response
+    ret_val = recv(*connected_socket, &rx_codes, sizeof(rx_codes), 0);
+    if (ret_val != sizeof(rx_codes))
+    {
+        // Error out
+        perror("transmit_buffer() - Failed recv the tx filename code\n");
+        return -1;
+    }
+
+    if (rx_codes == TX_FILENAME)
+    {
+        // Send filename (because variable length)
+        ret_val = send(*connected_socket, filename, pkt1->filename_size, 0);
+        if (ret_val == SOCKET_ERROR)
+        {
+            // Error out
+            perror("transmit_buffer() - failed to send filename\n");
+            return -1;
+        }
+
+        // Get the okay message back
+        ret_val = recv(*connected_socket, &rx_codes, sizeof(rx_codes), 0);
+        if (ret_val != sizeof(rx_codes))
+        {
+            // Error out
+            perror("transmit_buffer() - failed to recv tx buffer code\n");
+            return -1;
+        }
+
+        // Check the rx code to make sure we should transmit the buffer
+        if (rx_codes == TX_BUFFER)
+        {
+            // Send the entire buffer.
+            ret_val = send(*connected_socket, buffer, pkt1->file_size, 0);
+            if (ret_val == SOCKET_ERROR)
+            {
+                // Error out
+                perror("transmit_buffer() - failed to send buffer\n");
+                return -1;
+            }
+        }
+        else
+        {
+            perror("transmit_buffer() - did not recieve the correct code, expecting TX buffer!");
+            return -1;
+        }
+    }
+    else
+    {
+        perror("transmit_buffer() - did not recieve the correct code, expected TX FILENAME");
+        return -1;
+    }
+
+    // close down the socket
+    // XXX : do we want to that here.
+    stop_client(connected_socket);
+    return 0;
+}
+
 // Lets start the client
 int transmit_file(SOCKET *connected_socket, const char *filename)
 {
@@ -27,7 +101,6 @@ int transmit_file(SOCKET *connected_socket, const char *filename)
     uint8_t *buffer;
     int buffer_size;
     int ret_val;
-    uint32_t rx_codes;
 
     buffer_size = buffer_file(filename, &buffer);
     if (buffer_size < 1)
@@ -40,54 +113,10 @@ int transmit_file(SOCKET *connected_socket, const char *filename)
     // Getting ready to transmit
     pkt1.file_size = buffer_size;
     pkt1.checksum = compute_checksum(buffer, pkt1.file_size);
-    pkt1.filename_size = strlen(filename);
+    pkt1.filename_size = strlen(filename) + 1;
     pkt1.magic_number = MAGIC_NUMBER;
 
-    // Send the packet information
-    ret_val = send(*connected_socket, &pkt1, sizeof(pkt1), 0);
-    if (ret_val == SOCKET_ERROR)
-    {
-        // Error out
-    }
-
-    // Get response
-    ret_val = recv(*connected_socket, &rx_codes, sizeof(rx_codes), 0);
-    if (ret_val != sizeof(rx_codes))
-    {
-        // Error out
-    }
-
-    if (rx_codes == TX_FILENAME)
-    {
-        // Send filename (because variable length)
-        ret_val = send(*connected_socket, filename, pkt1.filename_size, 0);
-        if (ret_val == SOCKET_ERROR)
-        {
-            // Error out
-        }
-
-        // Get the okay message back
-        ret_val = recv(*connected_socket, &rx_codes, sizeof(rx_codes), 0);
-        if (ret_val != sizeof(rx_codes))
-        {
-            // Error out
-        }
-
-        // Check the rx code to make sure we should transmit the buffer
-        if (rx_codes == TX_BUFFER)
-        {
-            // Send the entire buffer.
-            ret_val = send(*connected_socket, buffer, pkt1.file_size, 0);
-            if (ret_val == SOCKET_ERROR)
-            {
-                // Error out
-            }
-        }
-    }
-
-    // close down the socket
-    stop_client(connected_socket);
-    return 0;
+    return transmit_buffer(connected_socket, &pkt1, buffer, filename);
 }
 
 void stop_client(SOCKET *connected_socket)
@@ -143,7 +172,6 @@ int start_client(const char *hostname, uint16_t port, SOCKET *connected_socket)
             WSACleanup();
             return -1;
         }
-        printf("3\n");
 
         ret_val = connect(*connected_socket, ptr->ai_addr, (int)ptr->ai_addrlen);
         if (ret_val == SOCKET_ERROR)
