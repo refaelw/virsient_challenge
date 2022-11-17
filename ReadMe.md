@@ -4,7 +4,7 @@ Name : Refael Whyte
 Email : refael.whyte@gmail.com
 
 ## Build Instructions 
-This is built on windows, linux support is coming in the next release. 
+This is built on windows. No linux support. 
 
 ```
 mkdir build 
@@ -25,12 +25,24 @@ ____________________________________________
 | Magic Number | File Size | Filename Size |
 
 Then the client sends 
-___________________________
-| Magic Number | Filename |
+____________
+| Filename |
 
-Then the server checks to make sure the file does not exist, if not then the client sends the file buffer. 
+Then the client sends the file buffer. 
 
 The server receives the header, checks the disk for the files existence. sends back either send the file, or stop. 
 
+## Using 
+The output is two programs 
+    virsient_client 
+    virsient_server 
 
- 
+Run the server and then use the client to transmit some files. 
+
+## Known Issues
+The server never exits cleanly. The accept() function is blocking so hangs on forever. 
+
+## Future Updates 
+ - Have the server check to see if file exists and checksums match before transmission
+ - Implement checksum/SHA256 of buffer, currently always returns 0.  
+ - Linux support. Windows socket is weird.  

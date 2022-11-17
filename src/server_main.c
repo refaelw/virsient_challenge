@@ -11,14 +11,6 @@
 
 int main(int argc, char *argv[])
 {
-
-    if (argc != 2)
-    {
-        // The usage is
-        printf("%s filename hostname\n", argv[0]);
-        return -1;
-    }
-
     uint16_t port = 54821;
     SOCKET socket;
     int ret_val;
@@ -32,6 +24,7 @@ int main(int argc, char *argv[])
     bool run_loop = true;
     server_loop(&socket, &run_loop);
 
+    printf("Server Stopping\n");
     // We will never get here
     stop_server(&socket);
     return 0;

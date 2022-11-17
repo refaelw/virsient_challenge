@@ -126,7 +126,7 @@ DWORD WINAPI rx_thread(LPVOID lpParam)
 int server_loop(SOCKET *listen_socket, bool *keep_looping)
 {
     //
-    struct thread_elem *active_threads;
+    struct thread_elem *active_threads = NULL;
     // This is a constant so we dont get killed by too much memory
     int max_threads = 25;
 
@@ -134,6 +134,7 @@ int server_loop(SOCKET *listen_socket, bool *keep_looping)
     // XXX : I know its not atomic, but C doesn't have standard atomic types.
     while (*keep_looping == true)
     {
+
         if (list_length(&active_threads) < max_threads)
         {
             struct thread_elem *elem = add_thread(&active_threads);
@@ -142,7 +143,6 @@ int server_loop(SOCKET *listen_socket, bool *keep_looping)
             // Oh fuck, this blocks, so will never exit.
             // But this function call is non-blocking on send and other socket function calls.
             // ioctlsocket(sock, FIONBIO, 1);
-
             elem->client_socket = accept(*listen_socket, NULL, NULL);
             if (elem->client_socket == INVALID_SOCKET)
             {
@@ -251,8 +251,8 @@ int start_server(uint16_t port, SOCKET *listen_socket)
         return -1;
     }
     // Configure the socket
-    setsockopt(*listen_socket, IPPROTO_TCP, TCP_MAXRT, &max_retrys, sizeof(max_retrys));
-    setsockopt(*listen_socket, IPPROTO_TCP, SO_RCVTIMEO, &time_out, sizeof(time_out));
+    // setsockopt(*listen_socket, IPPROTO_TCP, TCP_MAXRT, &max_retrys, sizeof(max_retrys));
+    // setsockopt(*listen_socket, IPPROTO_TCP, SO_RCVTIMEO, &time_out, sizeof(time_out));
 
     // bind
     ret_val = bind(*listen_socket, result->ai_addr, (int)result->ai_addrlen);
